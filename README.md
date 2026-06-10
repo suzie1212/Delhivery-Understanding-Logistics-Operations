@@ -1,2 +1,3 @@
 # Delhivery-Understanding-Logistics-Operations
-The company wants to understand and process the data coming out of data engineering pipelines: • Clean, sanitize and manipulate data to get useful features out of raw fields • Make sense out of the raw data and help the data science team to build forecasting models on it
+Delhivery's logistics operations generate large amounts of shipment and delivery data every day. To derive meaningful insights from this data, it is important to clean, transform, and process the raw records into a structured format suitable for analysis.
+The goal of this project is to perform exploratory data analysis, identify operational patterns, engineer useful features, and prepare the data for future forecasting and machine learning applications.
