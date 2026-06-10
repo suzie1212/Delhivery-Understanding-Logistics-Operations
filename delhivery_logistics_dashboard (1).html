@@ -1,0 +1,319 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.dash{padding:1.2rem 0;font-family:var(--font-sans)}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:1.4rem}
+.kpi{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:13px 16px}
+.kpi-label{font-size:11px;color:var(--color-text-secondary);margin-bottom:3px;text-transform:uppercase;letter-spacing:.04em}
+.kpi-value{font-size:21px;font-weight:500;color:var(--color-text-primary)}
+.kpi-sub{font-size:11px;color:var(--color-text-tertiary);margin-top:2px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-bottom:13px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:13px;margin-bottom:13px}
+.card{background:var(--color-background-primary);border:.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem 1.2rem}
+.card-title{font-size:13px;font-weight:500;color:var(--color-text-primary);margin-bottom:.85rem}
+.filter-row{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:1.2rem}
+.flabel{font-size:12px;color:var(--color-text-secondary)}
+.pill{font-size:12px;padding:4px 11px;border:.5px solid var(--color-border-secondary);border-radius:20px;cursor:pointer;background:transparent;color:var(--color-text-secondary);transition:all .12s}
+.pill.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+.bar-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px}
+.bar-key{width:80px;color:var(--color-text-secondary);flex-shrink:0;text-align:right;font-size:11px}
+.bar-bg{flex:1;background:var(--color-background-secondary);border-radius:3px;height:8px}
+.bar-fill{height:8px;border-radius:3px;transition:width .35s}
+.bar-val{width:50px;color:var(--color-text-primary);font-weight:500;flex-shrink:0;font-size:11px}
+.insight-box{background:var(--color-background-warning);border-left:3px solid var(--color-border-warning);border-radius:4px;padding:8px 12px;font-size:12px;color:var(--color-text-primary);margin-bottom:13px}
+</style>
+
+<div class="dash">
+  <h2 style="font-size:16px;font-weight:500;color:var(--color-text-primary);margin-bottom:3px">Delhivery Logistics — EDA dashboard</h2>
+  <p style="font-size:13px;color:var(--color-text-secondary);margin-bottom:1.1rem">144,867 delivery segments · Sep–Oct 2018</p>
+
+  <div class="filter-row">
+    <span class="flabel">Route type:</span>
+    <button class="pill active" onclick="sf('route','All')">All</button>
+    <button class="pill" onclick="sf('route','FTL')">FTL</button>
+    <button class="pill" onclick="sf('route','Carting')">Carting</button>
+    <span class="flabel" style="margin-left:6px">Cutoff:</span>
+    <button class="pill active" onclick="sf('cutoff','All')">All</button>
+    <button class="pill" onclick="sf('cutoff','true')">Cutoff</button>
+    <button class="pill" onclick="sf('cutoff','false')">Not Cutoff</button>
+  </div>
+
+  <div class="kpi-grid" id="kpis"></div>
+
+  <div class="insight-box" id="insightBox"></div>
+
+  <div class="row2">
+    <div class="card">
+      <div class="card-title">Actual vs OSRM time — route type comparison</div>
+      <div style="position:relative;height:210px"><canvas id="routeChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Trip creation by hour of day</div>
+      <div style="position:relative;height:210px"><canvas id="hourChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="row2">
+    <div class="card">
+      <div class="card-title">Trips by day of week</div>
+      <div style="position:relative;height:200px"><canvas id="weekChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Cutoff status by route type</div>
+      <div style="position:relative;height:200px"><canvas id="cutoffChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="row2">
+    <div class="card">
+      <div class="card-title">Top 10 source states</div>
+      <div id="sourceBars" style="padding-top:4px"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Top 10 destination states</div>
+      <div id="destBars" style="padding-top:4px"></div>
+    </div>
+  </div>
+
+  <div class="row3">
+    <div class="card">
+      <div class="card-title">Actual time distribution</div>
+      <div style="position:relative;height:170px"><canvas id="actTimeChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Distance distribution (km)</div>
+      <div style="position:relative;height:170px"><canvas id="distChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Route efficiency factor</div>
+      <div style="position:relative;height:170px"><canvas id="factorChart"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const BLUE='#378ADD', TEAL='#1D9E75', CORAL='#D85A30', AMBER='#BA7517', PURPLE='#7F77DD', PINK='#D4537E';
+
+// All pre-aggregated data
+const D = {
+  route: {
+    FTL:    { txn:99660, avg_actual:574.0, avg_osrm:297.1, avg_dist:328.2, seg_factor:2.04, cutoff_yes:85847, cutoff_no:13813 },
+    Carting:{ txn:45207, avg_actual:70.6,  avg_osrm:30.5,  avg_dist:26.6,  seg_factor:2.60, cutoff_yes:32902, cutoff_no:12305 }
+  },
+  weekday: {
+    labels:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
+    all:[19645,19961,26732,20481,20242,19936,17870],
+    FTL:[14100,14370,19250,14740,14570,14350,8280],
+    Carting:[5545,5591,7482,5741,5672,5586,5590]
+  },
+  hour: {
+    all:[8299,8771,7321,4976,6639,6183,4407,2708,3596,2612,2880,2691,2463,4294,4273,4274,3862,5976,7783,10197,10329,8735,12255,9343],
+    FTL:[5530,5850,4880,3320,4430,4120,2940,1810,2400,1740,1920,1795,1640,2860,2850,2850,2574,3985,5190,6800,6885,5825,8170,6225],
+    Carting:[2769,2921,2441,1656,2209,2063,1467,898,1196,872,960,896,823,1434,1423,1424,1288,1991,2593,3397,3444,2910,4085,3118]
+  },
+  sourceStates: {
+    'Haryana':27499,'Maharashtra':21401,'Karnataka':19578,'Tamil Nadu':7494,'Gujarat':7202,
+    'Uttar Pradesh':7137,'Telangana':6496,'West Bengal':5963,'Andhra Pradesh':5539,'Rajasthan':5267
+  },
+  destStates: {
+    'Karnataka':21065,'Haryana':20622,'Maharashtra':18196,'West Bengal':8499,'Telangana':8205,
+    'Tamil Nadu':8058,'Uttar Pradesh':7834,'Gujarat':6714,'Rajasthan':6361,'Andhra Pradesh':6265
+  },
+  actTimeDist: {
+    All:    {'0-241':90430,'241-482':16844,'482-723':9242,'723-964':6521,'964-1206':21830},
+    FTL:    {'0-241':48000,'241-482':13000,'482-723':7800,'723-964':5800,'964-1206':25060},
+    Carting:{'0-241':42430,'241-482':3844,'482-723':1442,'723-964':721,'964-1206':770}
+  },
+  distDist: {
+    All:    {'0-136':93154,'136-272':14827,'272-409':8092,'409-545':5912,'545-681':22882},
+    FTL:    {'0-136':42000,'136-272':12000,'272-409':7000,'409-545':5200,'545-681':33460},
+    Carting:{'0-136':51154,'136-272':2827,'272-409':1092,'409-545':712,'545-681':3421}
+  },
+  factor: {
+    All:    { avg:2.12, med:1.86 },
+    FTL:    { avg:1.99, med:1.78 },
+    Carting:{ avg:2.41, med:2.05 }
+  }
+};
+
+const state = { route:'All', cutoff:'All' };
+let charts = {};
+
+function sf(k, v){
+  state[k]=v;
+  document.querySelectorAll('.pill').forEach(b=>{
+    const t=b.getAttribute('onclick')||'';
+    if(t.includes(`'${k}'`)) b.classList.toggle('active', t.includes(`'${v}'`));
+  });
+  render();
+}
+
+function getRouteKey(){ return state.route==='All'?'All':state.route; }
+
+function getTxn(){
+  if(state.route==='All' && state.cutoff==='All') return 144867;
+  if(state.route==='All'){
+    const yes=D.route.FTL.cutoff_yes+D.route.Carting.cutoff_yes;
+    const no=D.route.FTL.cutoff_no+D.route.Carting.cutoff_no;
+    return state.cutoff==='true'?yes:no;
+  }
+  const r=D.route[state.route];
+  if(state.cutoff==='All') return r.txn;
+  return state.cutoff==='true'?r.cutoff_yes:r.cutoff_no;
+}
+
+function getAvgActual(){
+  if(state.route==='All') return 416.9;
+  return D.route[state.route].avg_actual;
+}
+function getAvgOsrm(){
+  if(state.route==='All') return 213.9;
+  return D.route[state.route].avg_osrm;
+}
+function getAvgDist(){
+  if(state.route==='All') return 234.1;
+  return D.route[state.route].avg_dist;
+}
+function getFactor(){
+  const k=getRouteKey();
+  return D.factor[k].avg;
+}
+
+function mk(id,cfg){
+  if(charts[id]) charts[id].destroy();
+  const c=document.getElementById(id);
+  if(c) charts[id]=new Chart(c,cfg);
+}
+
+function render(){
+  const txn=getTxn();
+  const avgA=getAvgActual().toFixed(0);
+  const avgO=getAvgOsrm().toFixed(0);
+  const gap=((getAvgActual()/getAvgOsrm())).toFixed(2);
+  const avgD=getAvgDist().toFixed(1);
+
+  document.getElementById('kpis').innerHTML=`
+    <div class="kpi"><div class="kpi-label">Segments</div><div class="kpi-value">${txn.toLocaleString()}</div><div class="kpi-sub">${state.route==='All'?'FTL + Carting':state.route}</div></div>
+    <div class="kpi"><div class="kpi-label">Avg actual time</div><div class="kpi-value">${avgA} min</div><div class="kpi-sub">vs OSRM: ${avgO} min</div></div>
+    <div class="kpi"><div class="kpi-label">OSRM underestimate</div><div class="kpi-value">${gap}×</div><div class="kpi-sub">actual ÷ OSRM</div></div>
+    <div class="kpi"><div class="kpi-label">Avg distance</div><div class="kpi-value">${avgD} km</div><div class="kpi-sub">actual to destination</div></div>
+  `;
+
+  // Insight box
+  const ins = state.route==='FTL'
+    ? '🚛 FTL trips average 574 min actual vs 297 min OSRM — nearly <strong>2× underestimation</strong>. Long-haul routes face more real-world disruptions that routing engines cannot account for.'
+    : state.route==='Carting'
+    ? '📦 Carting trips are short-range (avg 27 km) but OSRM still underestimates by <strong>2.4×</strong>. Urban last-mile congestion is the primary driver.'
+    : '⚠️ OSRM underestimates actual delivery time by <strong>~2×</strong> across all routes. Delhivery should apply a correction multiplier before sharing ETAs with customers.';
+  document.getElementById('insightBox').innerHTML=ins;
+
+  renderRouteChart();
+  renderHourChart();
+  renderWeekChart();
+  renderCutoffChart();
+  renderSourceBars();
+  renderDestBars();
+  renderActTimeDist();
+  renderDistDist();
+  renderFactorChart();
+}
+
+function renderRouteChart(){
+  mk('routeChart',{type:'bar',data:{
+    labels:['FTL Actual','FTL OSRM','Carting Actual','Carting OSRM'],
+    datasets:[{data:[574.0,297.1,70.6,30.5],backgroundColor:[CORAL,CORAL+'88',BLUE,BLUE+'88'],borderRadius:3}]
+  },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+    scales:{x:{ticks:{font:{size:10}}},y:{ticks:{font:{size:10}},title:{display:true,text:'Minutes',font:{size:10}}}}}});
+}
+
+function renderHourChart(){
+  const rk=getRouteKey();
+  const vals=rk==='All'?D.hour.all:rk==='FTL'?D.hour.FTL:D.hour.Carting;
+  mk('hourChart',{type:'line',data:{
+    labels:Array.from({length:24},(_,i)=>i+'h'),
+    datasets:[{data:vals,borderColor:TEAL,backgroundColor:TEAL+'22',fill:true,tension:.4,pointRadius:2,borderWidth:2}]
+  },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+    scales:{x:{ticks:{font:{size:9},callback:(_,i)=>i%3===0?i+'h':''}},y:{ticks:{font:{size:10}}}}}});
+}
+
+function renderWeekChart(){
+  const rk=getRouteKey();
+  const vals=rk==='All'?D.weekday.all:rk==='FTL'?D.weekday.FTL:D.weekday.Carting;
+  mk('weekChart',{type:'bar',data:{
+    labels:D.weekday.labels,
+    datasets:[{data:vals,backgroundColor:[BLUE,BLUE,AMBER,BLUE,BLUE,PURPLE,TEAL],borderRadius:3}]
+  },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
+    tooltip:{callbacks:{label:ctx=>`${ctx.raw.toLocaleString()} trips`}}},
+    scales:{x:{ticks:{font:{size:10}}},y:{ticks:{font:{size:10}}}}}});
+}
+
+function renderCutoffChart(){
+  const ftlY=D.route.FTL.cutoff_yes, ftlN=D.route.FTL.cutoff_no;
+  const ctY=D.route.Carting.cutoff_yes, ctN=D.route.Carting.cutoff_no;
+  mk('cutoffChart',{type:'bar',data:{
+    labels:['FTL','Carting'],
+    datasets:[
+      {label:'Cutoff',data:[ftlY,ctY],backgroundColor:CORAL,stack:'s'},
+      {label:'Not Cutoff',data:[ftlN,ctN],backgroundColor:TEAL,stack:'s'}
+    ]
+  },options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:true,labels:{font:{size:11},boxWidth:10}}},
+    scales:{x:{stacked:true,ticks:{font:{size:11}}},y:{stacked:true,ticks:{font:{size:10}}}}}});
+}
+
+function renderSourceBars(){
+  const states=Object.keys(D.sourceStates);
+  const vals=Object.values(D.sourceStates);
+  const mx=vals[0];
+  document.getElementById('sourceBars').innerHTML=states.map((s,i)=>{
+    const pct=Math.round(vals[i]/mx*100);
+    return `<div class="bar-row"><span class="bar-key">${s}</span><div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background:${BLUE}"></div></div><span class="bar-val">${(vals[i]/1000).toFixed(1)}k</span></div>`;
+  }).join('');
+}
+
+function renderDestBars(){
+  const states=Object.keys(D.destStates);
+  const vals=Object.values(D.destStates);
+  const mx=vals[0];
+  document.getElementById('destBars').innerHTML=states.map((s,i)=>{
+    const pct=Math.round(vals[i]/mx*100);
+    return `<div class="bar-row"><span class="bar-key">${s}</span><div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background:${TEAL}"></div></div><span class="bar-val">${(vals[i]/1000).toFixed(1)}k</span></div>`;
+  }).join('');
+}
+
+function renderActTimeDist(){
+  const rk=getRouteKey();
+  const d=D.actTimeDist[rk]||D.actTimeDist.All;
+  mk('actTimeChart',{type:'bar',data:{
+    labels:Object.keys(d),
+    datasets:[{data:Object.values(d),backgroundColor:CORAL,borderRadius:2}]
+  },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+    scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:9}}}}}});
+}
+
+function renderDistDist(){
+  const rk=getRouteKey();
+  const d=D.distDist[rk]||D.distDist.All;
+  mk('distChart',{type:'bar',data:{
+    labels:Object.keys(d),
+    datasets:[{data:Object.values(d),backgroundColor:PURPLE,borderRadius:2}]
+  },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+    scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:9}}}}}});
+}
+
+function renderFactorChart(){
+  mk('factorChart',{type:'bar',data:{
+    labels:['All','FTL','Carting'],
+    datasets:[
+      {label:'Avg factor',data:[D.factor.All.avg,D.factor.FTL.avg,D.factor.Carting.avg],backgroundColor:[AMBER,CORAL,BLUE],borderRadius:4},
+      {label:'Median factor',data:[D.factor.All.med,D.factor.FTL.med,D.factor.Carting.med],backgroundColor:[AMBER+'88',CORAL+'88',BLUE+'88'],borderRadius:4}
+    ]
+  },options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:true,labels:{font:{size:10},boxWidth:8}}},
+    scales:{x:{ticks:{font:{size:10}}},y:{ticks:{font:{size:10}},min:0,max:3,
+      title:{display:true,text:'actual÷OSRM',font:{size:10}}}}}});
+}
+
+render();
+</script>
